@@ -17,6 +17,7 @@ import requests
 import json
 from langchain.schema import SystemMessage
 from fastapi import FastAPI
+import streamlit as st
 
 load_dotenv() # load the OPENAI_API_KEY from .env file
 brwoserless_api_key = os.getenv("BROWSERLESS_API_KEY")
@@ -73,12 +74,12 @@ def scrape_website(objective: str, url: str):
     # Convert Python object to JSON string
     data_json = json.dumps(data)
 
-    # Send the POST request
+    # Send the POST request use the browserless api key
     post_url = f"https://chrome.browserless.io/content?token={brwoserless_api_key}"
     response = requests.post(post_url, headers=headers, data=data_json)
 
     # Check the response status code
-    if response.status_code == 200:
+    if response.status_code == 200: # if the request is successful
         soup = BeautifulSoup(response.content, "html.parser")
         text = soup.get_text()
         print("CONTENTTTTTT:", text)
@@ -91,20 +92,32 @@ def scrape_website(objective: str, url: str):
     else:
         print(f"HTTP request failed with status code {response.status_code}")
 
+# test
+# scrape_website("what is langchain", "https://docs.langchain.com/docs/")
 
 def summary(objective, content):
+    '''
+    method: map reduce, rename summary
+    purpose: this summary function is used to summarize the content based on the objective
+    why: becaues the GPT3.5 just can handle 4096 tokens
+    other ways: vector search
+    '''
     llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-16k-0613")
+    # create a GPT3.5 model
 
     text_splitter = RecursiveCharacterTextSplitter(
         separators=["\n\n", "\n"], chunk_size=10000, chunk_overlap=500)
-    docs = text_splitter.create_documents([content])
+    # create a text splitter, which will split the content into chunks, each chunk has 10k tokens
+    docs = text_splitter.create_documents([content])# split the content into chunks
     map_prompt = """
     Write a summary of the following text for {objective}:
     "{text}"
     SUMMARY:
     """
+    # create a map prompt, which will be used to summarize the content
     map_prompt_template = PromptTemplate(
         template=map_prompt, input_variables=["text", "objective"])
+    # create a map prompt template, which will be used to summarize the content
 
     summary_chain = load_summarize_chain(
         llm=llm,
@@ -113,6 +126,8 @@ def summary(objective, content):
         combine_prompt=map_prompt_template,
         verbose=True
     )
+    # load_summarize_chain is a function from langchain, which will load the summarize chain
+    # this package have 2 steps: 1. summarize of each chunk 2. combine all the summaries
 
     output = summary_chain.run(input_documents=docs, objective=objective)
 
@@ -120,6 +135,9 @@ def summary(objective, content):
 
 
 class ScrapeWebsiteInput(BaseModel):
+    '''
+    this class define 2 input that user need to give to the agent: objective & url
+    '''
     """Inputs for scrape_website"""
     objective: str = Field(
         description="The objective & task that users give to the agent")
@@ -127,15 +145,20 @@ class ScrapeWebsiteInput(BaseModel):
 
 
 class ScrapeWebsiteTool(BaseTool):
+    '''
+    define a function
+    '''
     name = "scrape_website"
     description = "useful when you need to get data from a website url, passing both url and objective to the function; DO NOT make up any url, the url should only be from the search results"
     args_schema: Type[BaseModel] = ScrapeWebsiteInput
 
     def _run(self, objective: str, url: str):
         return scrape_website(objective, url)
+    # define what will be happened when the function is called
 
     def _arun(self, url: str):
         raise NotImplementedError("error here")
+    # define what will be happened when error is raised
 
 
 # 3. Create langchain agent with the tools above
@@ -147,6 +170,7 @@ tools = [
     ),
     ScrapeWebsiteTool(),
 ]
+# create a list of tools, which will be used to create the agent
 
 system_message = SystemMessage(
     content="""You are a world class researcher, who can do detailed research on any topic and produce facts based results; 
@@ -160,15 +184,20 @@ system_message = SystemMessage(
             5/ In the final output, You should include all reference data & links to back up your research; You should include all reference data & links to back up your research
             6/ In the final output, You should include all reference data & links to back up your research; You should include all reference data & links to back up your research"""
 )
+# define the system message, which will be passed to the agent, just give the agent a role as a world class researcher
+# and give some rules that the agent should follow
+# the last two rules are repeated twice, just to make sure the agent will follow it, because this rules is often not followed by the agent  
 
 agent_kwargs = {
     "extra_prompt_messages": [MessagesPlaceholder(variable_name="memory")],
     "system_message": system_message,
 }
+# define the agent kwargs, which will be passed to the agent with system message
 
-llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-16k-0613")
+llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-16k-0613")# base models
 memory = ConversationSummaryBufferMemory(
     memory_key="memory", return_messages=True, llm=llm, max_token_limit=1000)
+# the recent conversation will be stored data by data, and the older memory will be summarized
 
 agent = initialize_agent(
     tools,
@@ -178,38 +207,45 @@ agent = initialize_agent(
     agent_kwargs=agent_kwargs,
     memory=memory,
 )
+# initialize the agent with the tools, base models, agent type, agent kwargs, memory
 
 
 # 4. Use streamlit to create a web app
-# def main():
-#     st.set_page_config(page_title="AI research agent", page_icon=":bird:")
+'''
+use streamlit to create a web app quickly by the python code
+do not forget to pip install streamlit
+usage: streamlit run app.py
+'''
+def main():
+    st.set_page_config(page_title="AI research agent", page_icon=":bird:")
+    # set the page config including title and icon, the page_title is the name of your website
 
-#     st.header("AI research agent :bird:")
-#     query = st.text_input("Research goal")
+    st.header("AI research agent :bird:")
+    query = st.text_input("Research goal")
 
-#     if query:
-#         st.write("Doing research for ", query)
+    if query:
+        st.write("Doing research for ", query)
 
-#         result = agent({"input": query})
+        result = agent({"input": query})
 
-#         st.info(result['output'])
+        st.info(result['output'])
 
 
-# if __name__ == '__main__':
-#     main()
+if __name__ == '__main__':
+    main()
 
 
 # 5. Set this as an API endpoint via FastAPI
-app = FastAPI()
+# app = FastAPI()
 
 
-class Query(BaseModel):
-    query: str
+# class Query(BaseModel):
+#     query: str
 
 
-@app.post("/")
-def researchAgent(query: Query):
-    query = query.query
-    content = agent({"input": query})
-    actual_content = content['output']
-    return actual_content
+# @app.post("/")
+# def researchAgent(query: Query):
+#     query = query.query
+#     content = agent({"input": query})
+#     actual_content = content['output']
+#     return actual_content
