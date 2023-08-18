@@ -18,30 +18,39 @@ import json
 from langchain.schema import SystemMessage
 from fastapi import FastAPI
 
-load_dotenv()
+load_dotenv() # load the OPENAI_API_KEY from .env file
 brwoserless_api_key = os.getenv("BROWSERLESS_API_KEY")
 serper_api_key = os.getenv("SERP_API_KEY")
 
 # 1. Tool for search
-
+'''
+use google search api to search for the query, and return the top 5 results
+use the api key from https://serpapi.com/
+'''
 
 def search(query):
     url = "https://google.serper.dev/search"
 
     payload = json.dumps({
         "q": query
-    })
+    }) # query is the input from user, which is the objective & task that user give to the agent
 
     headers = {
         'X-API-KEY': serper_api_key,
         'Content-Type': 'application/json'
-    }
+    } # serper_api_key is the api key from https://serpapi.com/
 
     response = requests.request("POST", url, headers=headers, data=payload)
+    # request the api with the query and api key
 
     print(response.text)
+    # print the search result from Google 
 
     return response.text
+
+# test
+# search("what is the capital of vietnam")
+# search("what is meta's thread product")
 
 
 # 2. Tool for scraping
